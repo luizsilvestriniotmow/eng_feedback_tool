@@ -3,7 +3,7 @@ services:
     name: eng-feedback-tool
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120 --preload
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0

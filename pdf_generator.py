@@ -1,10 +1,6 @@
 import os
 import urllib.request
 import json
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import numpy as np
 from fpdf import FPDF
 from datetime import datetime
 
@@ -190,7 +186,11 @@ def generate_pdf(feedback_data, output_path):
         pdf.cell(0, 15, "Dashboard de Evolução Contínua (Appêndice Analítico)", ln=True, align='C')
         pdf.ln(5)
 
-        # Matplotlib Graph Generation
+        # Matplotlib Graph Generation (Lazy Loading)
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import numpy as np
         plt.style.use('bmh') # Clean aesthetic style
 
         # Plot 1: Line Chart
