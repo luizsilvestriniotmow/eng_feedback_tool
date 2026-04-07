@@ -1,5 +1,6 @@
 import os
 import urllib.request
+import ssl
 import json
 from fpdf import FPDF
 from datetime import datetime
@@ -10,7 +11,11 @@ class FeedbackPDF(FPDF):
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'logo.png')
         if not os.path.exists(logo_path):
             try:
-                urllib.request.urlretrieve("https://otmow.com/wp-content/uploads/2025/10/logo-1.png", logo_path)
+                # Ignorar verificação de certificado SSL para o download da logo
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                urllib.request.urlretrieve("https://otmow.com/wp-content/uploads/2025/10/logo-1.png", logo_path, context=ctx)
             except Exception as e:
                 print("Could not download logo", e)
                 
