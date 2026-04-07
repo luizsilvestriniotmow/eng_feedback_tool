@@ -320,6 +320,7 @@ def manage_feedbacks():
 
             impacts_str          = json.dumps(data.get('impacts', []))
             execution_blocks_str = json.dumps(data.get('execution_blocks', []))
+            is_draft             = 1 if data.get('is_draft') else 0
 
             cursor.execute('''
                 INSERT INTO feedbacks (
@@ -333,8 +334,8 @@ def manage_feedbacks():
                     ownership_text, ownership_score,
                     cultural_text, cultural_score,
                     execution_blocks_json,
-                    email_sent
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    email_sent, is_draft
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 data.get('engineer_name'), data.get('engineer_email'), data.get('cc_email'),
                 data.get('evaluator_name'), data.get('execution_text'), impacts_str,
@@ -346,7 +347,7 @@ def manage_feedbacks():
                 data.get('ownership_text'), data.get('ownership_score'),
                 data.get('cultural_text'), data.get('cultural_score'),
                 execution_blocks_str,
-                0
+                0, is_draft
             ))
             feedback_id = cursor.lastrowid
             conn.commit()
@@ -365,24 +366,88 @@ def manage_feedbacks():
     if user_role == 'user':
         # Engenheiro vê apenas seus próprios feedbacks
         feedbacks = conn.execute(
-            'SELECT id, engineer_name, evaluator_name, date_created, email_sent FROM feedbacks WHERE engineer_email = ? ORDER BY date_created DESC',
+            'SELECT id, engineer_name, evaluator_name, date_created, email_sent, is_draft FROM feedbacks WHERE engineer_email = ? ORDER BY date_created DESC',
             (user_email,)
         ).fetchall()
     else:
         feedbacks = conn.execute(
-            'SELECT id, engineer_name, evaluator_name, date_created, email_sent FROM feedbacks ORDER BY date_created DESC'
+            'SELECT id, engineer_name, evaluator_name, date_created, email_sent, is_draft FROM feedbacks ORDER BY date_created DESC'
         ).fetchall()
     conn.close()
     return jsonify([dict(fw) for fw in feedbacks])
 
-@app.route('/api/feedbacks/<int:feedback_id>', methods=['DELETE'])
-@requires_role('admin', 'gestor')
-def delete_feedback(feedback_id):
+@app.route('/api/feedbacks/<int:feedback_id>', methods=['GET', 'PUT', 'DELETE'])
+@requires_login
+def handle_single_feedback(feedback_id):
+    user_role  = session.get('user_role')
+    user_email = session.get('user_email')
     conn = database.get_db_connection()
-    conn.execute('DELETE FROM feedbacks WHERE id = ?', (feedback_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True}), 200
+
+    if request.method == 'GET':
+        fb = conn.execute('SELECT * FROM feedbacks WHERE id = ?', (feedback_id,)).fetchone()
+        conn.close()
+        if not fb:
+            return jsonify({"error": "Not found"}), 404
+        fb_dict = dict(fb)
+        if user_role == 'user' and fb_dict.get('engineer_email') != user_email:
+            return jsonify({"error": "Sem permissão"}), 403
+        fb_dict['impacts'] = json.loads(fb_dict.get('impacts_json') or '[]')
+        fb_dict['execution_blocks'] = json.loads(fb_dict.get('execution_blocks_json') or '[]')
+        return jsonify(fb_dict)
+
+    if request.method == 'PUT':
+        if user_role not in ('admin', 'gestor'):
+            conn.close()
+            return jsonify({"error": "Sem permissão"}), 403
+        try:
+            data = request.json
+            impacts_str          = json.dumps(data.get('impacts', []))
+            execution_blocks_str = json.dumps(data.get('execution_blocks', []))
+            is_draft             = 1 if data.get('is_draft') else 0
+
+            conn.execute('''
+                UPDATE feedbacks SET
+                    engineer_name=?, engineer_email=?, cc_email=?, evaluator_name=?,
+                    execution_text=?, impacts_json=?, execution_score=?,
+                    communication_text=?, communication_score=?,
+                    dev_text=?, dev_score=?,
+                    maintain_text=?, maintain_score=?,
+                    checklist_text=?, checklist_score=?,
+                    study_text=?, study_score=?,
+                    ownership_text=?, ownership_score=?,
+                    cultural_text=?, cultural_score=?,
+                    execution_blocks_json=?,
+                    is_draft=?
+                WHERE id=?
+            ''', (
+                data.get('engineer_name'), data.get('engineer_email'), data.get('cc_email'),
+                data.get('evaluator_name'), data.get('execution_text'), impacts_str,
+                data.get('execution_score'), data.get('communication_text'), data.get('communication_score'),
+                data.get('dev_text'), data.get('dev_score'),
+                data.get('maintain_text'), data.get('maintain_score'),
+                data.get('checklist_text'), data.get('checklist_score'),
+                data.get('study_text'), data.get('study_score'),
+                data.get('ownership_text'), data.get('ownership_score'),
+                data.get('cultural_text'), data.get('cultural_score'),
+                execution_blocks_str,
+                is_draft,
+                feedback_id
+            ))
+            conn.commit()
+            conn.close()
+            return jsonify({"success": True, "message": "Feedback atualizado com sucesso."}), 200
+        except Exception as e:
+            conn.close()
+            return jsonify({"error": str(e)}), 500
+
+    if request.method == 'DELETE':
+        if user_role not in ('admin', 'gestor'):
+            conn.close()
+            return jsonify({"error": "Sem permissão"}), 403
+        conn.execute('DELETE FROM feedbacks WHERE id = ?', (feedback_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True}), 200
 
 @app.route('/api/feedbacks/<int:feedback_id>/send-email', methods=['POST'])
 @requires_role('admin', 'gestor')

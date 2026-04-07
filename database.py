@@ -34,9 +34,16 @@ def init_db():
             cultural_text TEXT,
             cultural_score INTEGER,
             execution_blocks_json TEXT,
-            email_sent BOOLEAN DEFAULT 0
+            email_sent BOOLEAN DEFAULT 0,
+            is_draft BOOLEAN DEFAULT 0
         )
     ''')
+
+    # Adicionar coluna is_draft se não existir (para bancos antigos)
+    try:
+        cursor.execute("ALTER TABLE feedbacks ADD COLUMN is_draft BOOLEAN DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
 
     # ── Usuários ─────────────────────────────────────────────────────
     cursor.execute('''

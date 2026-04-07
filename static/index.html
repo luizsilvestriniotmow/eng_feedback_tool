@@ -225,7 +225,10 @@
                     </div>
                 </div>
 
-                <button type="submit" class="btn-primary" id="btnSubmit">Salvar Feedback</button>
+                <div class="form-actions" style="display: flex; gap: 1rem;">
+                    <button type="button" class="btn-secondary" id="btn-save-draft-fb" onclick="saveFeedback(true)">Salvar Rascunho</button>
+                    <button type="submit" class="btn-primary" id="btnSubmit">Salvar Feedback</button>
+                </div>
                 <div id="submit-status" class="status-msg"></div>
             </form>
         </div>

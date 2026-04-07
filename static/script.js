@@ -98,7 +98,10 @@ function onAuthSuccess() {
         showTab('history');
     } else {
         showTab('new');
-        addExecutionBlock();
+        const container = document.getElementById('execution-blocks-container');
+        if (container && container.children.length === 0) {
+            addExecutionBlock();
+        }
     }
 
     startInactivityTimer();
@@ -398,13 +401,24 @@ function calculateExecutionAverage() {
 // ══════════════════════════════════════════════════════════════════
 // FORMULÁRIO DE FEEDBACK
 // ══════════════════════════════════════════════════════════════════
+let editingFeedbackId = null;
+
 document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    await saveFeedback(false);
+});
+
+async function saveFeedback(isDraft) {
     const btn       = document.getElementById('btnSubmit');
+    const btnDraft  = document.getElementById('btn-save-draft-fb');
     const statusMsg = document.getElementById('submit-status');
 
-    btn.disabled    = true;
-    btn.innerText   = 'Salvando...';
+    if (btn) btn.disabled = true;
+    if (btnDraft) btnDraft.disabled = true;
+    
+    if (btn && !isDraft) btn.innerText = 'Salvando...';
+    if (btnDraft && isDraft) btnDraft.innerText = 'Salvando Rascunho...';
+    
     statusMsg.className = 'status-msg';
     statusMsg.innerText = '';
 
@@ -441,12 +455,16 @@ document.getElementById('feedbackForm').addEventListener('submit', async (e) => 
         ownership_score:     parseInt(document.getElementById('ownership_score').value),
         ownership_text:      document.getElementById('ownership_text').value,
         cultural_score:      parseInt(document.getElementById('cultural_score').value),
-        cultural_text:       document.getElementById('cultural_text').value
+        cultural_text:       document.getElementById('cultural_text').value,
+        is_draft:            isDraft
     };
 
     try {
-        const response = await apiFetch('/api/feedbacks', {
-            method: 'POST',
+        const url = editingFeedbackId ? `/api/feedbacks/${editingFeedbackId}` : '/api/feedbacks';
+        const method = editingFeedbackId ? 'PUT' : 'POST';
+
+        const response = await apiFetch(url, {
+            method: method,
             body: JSON.stringify(payload)
         });
         const data = await response.json();
@@ -455,7 +473,7 @@ document.getElementById('feedbackForm').addEventListener('submit', async (e) => 
             statusMsg.classList.add('success');
             statusMsg.innerText = 'Sincronizando...';
             setTimeout(() => {
-                statusMsg.innerText = 'Feedback salvo! Confira na aba Histórico.';
+                statusMsg.innerText = isDraft ? 'Rascunho salvo com sucesso!' : 'Feedback salvo! Confira na aba Histórico.';
                 document.getElementById('feedbackForm').reset();
                 document.getElementById('val-exec-avg').innerText = '0';
                 document.getElementById('val-comm').innerText     = '5';
@@ -464,6 +482,7 @@ document.getElementById('feedbackForm').addEventListener('submit', async (e) => 
                     if (el) el.innerText = '3';
                 });
                 document.getElementById('execution-blocks-container').innerHTML = '';
+                editingFeedbackId = null;
                 addExecutionBlock();
             }, 1000);
         } else {
@@ -476,10 +495,16 @@ document.getElementById('feedbackForm').addEventListener('submit', async (e) => 
             statusMsg.innerText = 'Falha de rede ao contatar servidor';
         }
     } finally {
-        btn.disabled  = false;
-        btn.innerText = 'Salvar Feedback';
+        if (btn) {
+            btn.disabled  = false;
+            btn.innerText = 'Salvar Feedback';
+        }
+        if (btnDraft) {
+            btnDraft.disabled = false;
+            btnDraft.innerText = 'Salvar Rascunho';
+        }
     }
-});
+}
 
 // ══════════════════════════════════════════════════════════════════
 // HISTÓRICO
@@ -509,21 +534,74 @@ function renderHistoryTable(list) {
     list.forEach(fb => {
         const tr = document.createElement('tr');
         const dp = new Date(fb.date_created);
+        
+        let statusText = fb.email_sent ? '✅ Enviado' : '⏳ Pendente';
+        if (fb.is_draft) statusText = '📝 Rascunho';
+
         tr.innerHTML = `
             <td>${dp.toLocaleDateString('pt-BR')} ${dp.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</td>
             <td><strong>${fb.engineer_name}</strong></td>
             <td>${fb.evaluator_name}</td>
-            <td>${fb.email_sent ? '✅ Enviado' : '⏳ Pendente'}</td>
+            <td>${statusText}</td>
             <td class="action-btns">
-                <a href="/api/feedbacks/${fb.id}/pdf" target="_blank" class="btn-download">PDF</a>
+                ${!fb.is_draft ? `<a href="/api/feedbacks/${fb.id}/pdf" target="_blank" class="btn-download">PDF</a>` : ''}
                 ${isPriv ? `
-                    <button class="btn-email" onclick="sendEmail(${fb.id}, this)">${fb.email_sent ? 'Reenviar' : 'Enviar E-mail'}</button>
+                    ${fb.is_draft ? `<button class="btn-secondary" onclick="editDraft(${fb.id})">Editar Rascunho</button>` : ''}
+                    ${!fb.is_draft ? `<button class="btn-email" onclick="sendEmail(${fb.id}, this)">${fb.email_sent ? 'Reenviar' : 'Enviar E-mail'}</button>` : ''}
                     <button class="btn-delete" onclick="deleteHistory(${fb.id})">Excluir</button>
                 ` : ''}
             </td>
         `;
         tbody.appendChild(tr);
     });
+}
+
+async function editDraft(id) {
+    try {
+        const response = await apiFetch(`/api/feedbacks/${id}`);
+        if (!response.ok) throw new Error('Erro ao carregar rascunho');
+        const fb = await response.json();
+
+        editingFeedbackId = fb.id;
+
+        document.getElementById('engineer_name').value = fb.engineer_name || '';
+        document.getElementById('engineer_email').value = fb.engineer_email || '';
+        document.getElementById('cc_email').value = fb.cc_email || '';
+        document.getElementById('evaluator_name').value = fb.evaluator_name || '';
+        
+        document.getElementById('communication_score').value = fb.communication_score || 5;
+        document.getElementById('val-comm').innerText = fb.communication_score || 5;
+        document.getElementById('communication_text').value = fb.communication_text || '';
+
+        ['dev', 'maintain', 'checklist', 'study', 'ownership', 'cultural'].forEach(field => {
+            document.getElementById(`${field}_score`).value = fb[`${field}_score`] || 3;
+            document.getElementById(`val-${field}`).innerText = fb[`${field}_score`] || 3;
+            document.getElementById(`${field}_text`).value = fb[`${field}_text`] || '';
+        });
+
+        const container = document.getElementById('execution-blocks-container');
+        container.innerHTML = '';
+        if (fb.execution_blocks && fb.execution_blocks.length > 0) {
+            fb.execution_blocks.forEach(block => {
+                addExecutionBlock();
+                const lastBlock = container.lastElementChild;
+                lastBlock.querySelector('.exec-start-date').value = block.start_date || '';
+                lastBlock.querySelector('.exec-end-date').value = block.end_date || '';
+                lastBlock.querySelector('.exec-desc-input').value = block.description || '';
+                lastBlock.querySelector('.exec-impact-input').value = block.impact || '';
+                lastBlock.querySelector('.exec-block-score').value = block.score || 5;
+                lastBlock.querySelector('.exec-block-score-val').innerText = block.score || 5;
+            });
+        } else {
+            addExecutionBlock();
+        }
+        calculateExecutionAverage();
+
+        showTab('new');
+        window.scrollTo(0, 0);
+    } catch (err) {
+        alert(err.message);
+    }
 }
 
 function filterHistory() {

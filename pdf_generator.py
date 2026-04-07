@@ -1,5 +1,6 @@
 import os
 import urllib.request
+import ssl
 import json
 from fpdf import FPDF
 from datetime import datetime
@@ -10,7 +11,13 @@ class FeedbackPDF(FPDF):
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'logo.png')
         if not os.path.exists(logo_path):
             try:
-                urllib.request.urlretrieve("https://otmow.com/wp-content/uploads/2025/10/logo-1.png", logo_path)
+                # Ignorar verificação de certificado SSL para o download da logo
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                import shutil
+                with urllib.request.urlopen("https://otmow.com/wp-content/uploads/2025/10/logo-1.png", context=ctx) as response, open(logo_path, 'wb') as out_file:
+                    shutil.copyfileobj(response, out_file)
             except Exception as e:
                 print("Could not download logo", e)
                 
@@ -97,10 +104,10 @@ def generate_pdf(feedback_data, output_path):
     pdf.cell(0, 10, "1. Execução e Impacto das Entregas", ln=True)
     pdf.set_font('helvetica', 'B', 10)
     pdf.set_text_color(44, 162, 95)
-    pdf.cell(0, 6, f"Média Geral de Execução: {feedback_data.get('execution_score', 0)} / 10", ln=True)
+    pdf.cell(0, 6, f"Média Geral de Execução: {feedback_data.get('execution_score') or 0} / 10", ln=True)
     pdf.ln(2)
     
-    execution_blocks = feedback_data.get('execution_blocks', [])
+    execution_blocks = feedback_data.get('execution_blocks') or []
     if execution_blocks:
         for idx, block in enumerate(execution_blocks):
             if pdf.get_y() > 240: pdf.add_page()
@@ -108,14 +115,14 @@ def generate_pdf(feedback_data, output_path):
             # Sub-header for the block
             pdf.set_font('helvetica', 'B', 11)
             pdf.set_text_color(27, 56, 114)
-            start = block.get('start_date', 'N/A')
-            end = block.get('end_date', 'N/A')
+            start = block.get('start_date') or 'N/A'
+            end = block.get('end_date') or 'N/A'
             pdf.cell(0, 8, f"Entrega #{idx+1} | Período: {start} até {end}", ln=True)
             
             # Score for the block
             pdf.set_font('helvetica', 'I', 10)
             pdf.set_text_color(44, 162, 95)
-            pdf.cell(0, 6, f"Nota desta Unidade: {block.get('score', 0)}/10", ln=True)
+            pdf.cell(0, 6, f"Nota desta Unidade: {block.get('score') or 0}/10", ln=True)
             
             # Description
             pdf.set_font('helvetica', 'B', 10)
@@ -124,7 +131,7 @@ def generate_pdf(feedback_data, output_path):
             pdf.cell(0, 6, "Descrição:", ln=True)
             pdf.set_font('helvetica', '', 10)
             pdf.set_x(15)
-            pdf.multi_cell(0, 5, block.get('description', ''))
+            pdf.multi_cell(0, 5, block.get('description') or '')
             
             # Impact
             pdf.set_font('helvetica', 'B', 10)
@@ -132,7 +139,7 @@ def generate_pdf(feedback_data, output_path):
             pdf.cell(0, 6, "Impacto Gerado:", ln=True)
             pdf.set_font('helvetica', '', 10)
             pdf.set_x(15)
-            pdf.multi_cell(0, 5, block.get('impact', ''))
+            pdf.multi_cell(0, 5, block.get('impact') or '')
             
             pdf.ln(4)
             # Draw a subtle separator between blocks if not the last one
@@ -147,9 +154,9 @@ def generate_pdf(feedback_data, output_path):
         pdf.cell(0, 6, "Resumo das Entregas:", ln=True)
         pdf.set_font('helvetica', '', 10)
         pdf.set_x(15)
-        pdf.multi_cell(0, 5, feedback_data.get('execution_text', ''))
+        pdf.multi_cell(0, 5, feedback_data.get('execution_text') or '')
         
-        impacts = feedback_data.get('impacts', [])
+        impacts = feedback_data.get('impacts') or []
         if impacts:
             pdf.ln(2)
             pdf.set_font('helvetica', 'B', 10)
@@ -161,7 +168,7 @@ def generate_pdf(feedback_data, output_path):
     pdf.ln(6)
 
     # 2. Comunicação
-    add_section("2. Comunicação Estratégica", feedback_data.get("communication_score", 0), 10, feedback_data.get("communication_text", ""), is_major=True)
+    add_section("2. Comunicação Estratégica", feedback_data.get("communication_score") or 0, 10, feedback_data.get("communication_text") or "", is_major=True)
     
     # Generic sections
     pdf.add_page("P")
@@ -170,15 +177,15 @@ def generate_pdf(feedback_data, output_path):
     pdf.cell(0, 12, "Matriz de Desenvolvimento (Alinhamentos Finais)", ln=True)
     pdf.ln(2)
 
-    add_section("A. Pontos a Desenvolver", feedback_data.get("dev_score", 0), 5, feedback_data.get("dev_text", ""))
-    add_section("B. Pontos a Manter (Fortalezas)", feedback_data.get("maintain_score", 0), 5, feedback_data.get("maintain_text", ""))
-    add_section("C. Senimento de Dono (Ownership)", feedback_data.get("ownership_score", 0), 5, feedback_data.get("ownership_text", ""))
-    add_section("D. Alinhamento Cultural (Culture Fit)", feedback_data.get("cultural_score", 0), 5, feedback_data.get("cultural_text", ""))
-    add_section("E. Checklist de Atividades", feedback_data.get("checklist_score", 0), 5, feedback_data.get("checklist_text", ""))
-    add_section("F. Dicas de Leitura/Estudo", feedback_data.get("study_score", 0), 5, feedback_data.get("study_text", ""))
+    add_section("A. Pontos a Desenvolver", feedback_data.get("dev_score") or 0, 5, feedback_data.get("dev_text") or "")
+    add_section("B. Pontos a Manter (Fortalezas)", feedback_data.get("maintain_score") or 0, 5, feedback_data.get("maintain_text") or "")
+    add_section("C. Senimento de Dono (Ownership)", feedback_data.get("ownership_score") or 0, 5, feedback_data.get("ownership_text") or "")
+    add_section("D. Alinhamento Cultural (Culture Fit)", feedback_data.get("cultural_score") or 0, 5, feedback_data.get("cultural_text") or "")
+    add_section("E. Checklist de Atividades", feedback_data.get("checklist_score") or 0, 5, feedback_data.get("checklist_text") or "")
+    add_section("F. Dicas de Leitura/Estudo", feedback_data.get("study_score") or 0, 5, feedback_data.get("study_text") or "")
 
     # --- NOVO: GERAR GRÁFICOS NO BACKEND E EMBUTIR COMO APÊNDICE ---
-    history = feedback_data.get('history', [])
+    history = feedback_data.get('history') or []
     if history and len(history) > 0:
         pdf.add_page("P")
         pdf.set_font('helvetica', 'B', 16)
@@ -194,9 +201,9 @@ def generate_pdf(feedback_data, output_path):
         plt.style.use('bmh') # Clean aesthetic style
 
         # Plot 1: Line Chart
-        dates = [f.get('date_created', '').split(' ')[0] for f in history]
-        exec_scores = [f.get('execution_score', 0) for f in history]
-        comm_scores = [f.get('communication_score', 0) for f in history]
+        dates = [(f.get('date_created') or '').split(' ')[0] for f in history]
+        exec_scores = [f.get('execution_score') or 0 for f in history]
+        comm_scores = [f.get('communication_score') or 0 for f in history]
 
         fig, ax = plt.subplots(figsize=(6, 3), dpi=200)
         ax.plot(dates, exec_scores, marker='o', color='#3674ef', linewidth=2, label='Execução')
@@ -222,9 +229,9 @@ def generate_pdf(feedback_data, output_path):
         labels = ['Desenvolver', 'Manter', 'Ownership', 'Cultura', 'Checklist', 'Estudo']
         
         def map_m(fb): return [
-            fb.get('dev_score', 0), fb.get('maintain_score', 0), 
-            fb.get('ownership_score', 0), fb.get('cultural_score', 0),
-            fb.get('checklist_score', 0), fb.get('study_score', 0)
+            fb.get('dev_score') or 0, fb.get('maintain_score') or 0, 
+            fb.get('ownership_score') or 0, fb.get('cultural_score') or 0,
+            fb.get('checklist_score') or 0, fb.get('study_score') or 0
         ]
         
         stats_latest = map_m(latest)
